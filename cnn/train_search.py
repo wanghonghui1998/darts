@@ -143,7 +143,12 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr):
     target = target.cuda(non_blocking=True)
 
     # get a random minibatch from the search queue with replacement
-    input_search, target_search = next(iter(valid_queue))
+    #input_search, target_search = next(iter(valid_queue))
+    try:
+      input_search, target_search = next(valid_queue_iter)
+    except:
+      valid_queue_iter = iter(valid_queue)
+      input_search, target_search = next(valid_queue_iter)
     #input_search = Variable(input_search, requires_grad=False).cuda()
     #target_search = Variable(target_search, requires_grad=False).cuda(non_blocking=True)
     input_search = input_search.cuda()
