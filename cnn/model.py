@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from operations import *
-from torch.autograd import Variable
+#from torch.autograd import Variable
 from utils import drop_path
 
 

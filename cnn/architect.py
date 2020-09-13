@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import torch.nn as nn
-from torch.autograd import Variable
+#from torch.autograd import Variable
 
 
 def _concat(xs):
@@ -17,16 +17,6 @@ class Architect(object):
     self.optimizer = torch.optim.Adam(self.model.arch_parameters(),
         lr=args.arch_learning_rate, betas=(0.5, 0.999), weight_decay=args.arch_weight_decay)
 
-  def _compute_unrolled_model(self, input, target, eta, network_optimizer):
-    loss = self.model._loss(input, target)
-    theta = _concat(self.model.parameters()).data
-    try:
-      moment = _concat(network_optimizer.state[v]['momentum_buffer'] for v in self.model.parameters()).mul_(self.network_momentum)
-    except:
-      moment = torch.zeros_like(theta)
-    dtheta = _concat(torch.autograd.grad(loss, self.model.parameters())).data + self.network_weight_decay*theta
-    unrolled_model = self._construct_model_from_theta(theta.sub(eta, moment+dtheta))
-    return unrolled_model
 
   def step(self, input_train, target_train, input_valid, target_valid, eta, network_optimizer, unrolled):
     self.optimizer.zero_grad()
@@ -44,9 +34,9 @@ class Architect(object):
     unrolled_model = self._compute_unrolled_model(input_train, target_train, eta, network_optimizer)
     unrolled_loss = unrolled_model._loss(input_valid, target_valid)
 
-    unrolled_loss.backward()
+    unrolled_loss.backward()  # why backward? because we do not care the grad buffer of unrolled model?
     dalpha = [v.grad for v in unrolled_model.arch_parameters()]
-    vector = [v.grad.data for v in unrolled_model.parameters()]
+    vector = [v.grad.detach() for v in unrolled_model.parameters()] #p.data.sub_(v) need v.requires_grad to be False
     implicit_grads = self._hessian_vector_product(vector, input_train, target_train)
 
     for g, ig in zip(dalpha, implicit_grads):
@@ -54,9 +44,20 @@ class Architect(object):
 
     for v, g in zip(self.model.arch_parameters(), dalpha):
       if v.grad is None:
-        v.grad = Variable(g.data)
+        v.grad = g.data
       else:
         v.grad.data.copy_(g.data)
+
+  def _compute_unrolled_model(self, input, target, eta, network_optimizer):
+    loss = self.model._loss(input, target)
+    theta = _concat(self.model.parameters()).detach()
+    try:
+      moment = _concat(network_optimizer.state[v]['momentum_buffer'] for v in self.model.parameters()).mul_(self.network_momentum)
+    except:
+      moment = torch.zeros_like(theta)
+    dtheta = _concat(torch.autograd.grad(loss, self.model.parameters())).detach() + self.network_weight_decay*theta
+    unrolled_model = self._construct_model_from_theta(theta.sub(eta, moment+dtheta))
+    return unrolled_model
 
   def _construct_model_from_theta(self, theta):
     model_new = self.model.new()
@@ -76,7 +77,7 @@ class Architect(object):
   def _hessian_vector_product(self, vector, input, target, r=1e-2):
     R = r / _concat(vector).norm()
     for p, v in zip(self.model.parameters(), vector):
-      p.data.add_(R, v)
+      p.data.add_(R, v) #p.data: change value and do not recode computation
     loss = self.model._loss(input, target)
     grads_p = torch.autograd.grad(loss, self.model.arch_parameters())
 
