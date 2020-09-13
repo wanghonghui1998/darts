@@ -39,6 +39,7 @@ parser.add_argument('--seed', type=int, default=2, help='random seed')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
 parser.add_argument('--train_portion', type=float, default=0.5, help='portion of training data')
 parser.add_argument('--unrolled', action='store_true', default=False, help='use one-step unrolled validation loss')
+parser.add_argument('--one_level', action='store_true', default=False, help='use one-level optimization')
 parser.add_argument('--arch_learning_rate', type=float, default=3e-4, help='learning rate for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 args = parser.parse_args()
@@ -83,27 +84,52 @@ def main():
       momentum=args.momentum,
       weight_decay=args.weight_decay)
 
-  train_transform, valid_transform = utils._data_transforms_cifar10(args)
-  train_data = dset.CIFAR10(root=args.data, train=True, download=True, transform=train_transform)
+  if not args.one_level:
+    train_transform, valid_transform = utils._data_transforms_cifar10(args)
+    train_data = dset.CIFAR10(root=args.data, train=True, download=True, transform=train_transform)
 
-  num_train = len(train_data)
-  indices = list(range(num_train))
-  split = int(np.floor(args.train_portion * num_train))
+    num_train = len(train_data)
+    indices = list(range(num_train))
+    split = int(np.floor(args.train_portion * num_train))
 
-  train_queue = torch.utils.data.DataLoader(
-      train_data, batch_size=args.batch_size,
-      sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[:split]),
-      pin_memory=True, num_workers=2)
+    train_queue = torch.utils.data.DataLoader(
+        train_data, batch_size=args.batch_size,
+        sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[:split]),
+        pin_memory=True, num_workers=2)
 
-  valid_queue = torch.utils.data.DataLoader(
-      train_data, batch_size=args.batch_size,
-      sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[split:num_train]),
-      pin_memory=True, num_workers=2)
+    valid_queue = torch.utils.data.DataLoader(
+        train_data, batch_size=args.batch_size,
+        sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[split:num_train]),
+        pin_memory=True, num_workers=2)
 
-  scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, float(args.epochs), eta_min=args.learning_rate_min)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+          optimizer, float(args.epochs), eta_min=args.learning_rate_min)
 
-  architect = Architect(model, args)
+    architect = Architect(model, args)
+
+  else:
+    # TODO: autoaugment or cutout
+    train_transform, valid_transform = utils._data_transforms_cifar10(args)
+    train_data = dset.CIFAR10(root=args.data, train=True, download=True, transform=train_transform)
+    valid_data = dset.CIFAR10(root=args.data, train=False, download=True, transform=valid_transform)
+ 
+    train_queue = torch.utils.data.DataLoader(
+        train_data, batch_size=args.batch_size, shuffle=True, pin_memory=True, num_workers=2)
+
+    valid_queue = torch.utils.data.DataLoader(
+        valid_data, batch_size=args.batch_size, shuffle=False, pin_memory=True, num_workers=2)
+
+    # TODO: hyper-param for arch_optimizer  
+    arch_optimizer = torch.optim.SGD(
+        model.arch_parameters(),
+        args.arch_learning_rate,
+        momentum=args.momentum,
+        weight_decay=args.arch_weight_decay)
+
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+          optimizer, float(args.epochs), eta_min=args.learning_rate_min)
+    # TODO: scheduler for arch_optimizer
+
 
   for epoch in range(args.epochs):
 #    scheduler.step()
@@ -117,7 +143,10 @@ def main():
     print(F.softmax(model.alphas_reduce, dim=-1))
 
     # training
-    train_acc, train_obj = train(train_queue, valid_queue, model, architect, criterion, optimizer, lr)
+    if not args.one_level:
+      train_acc, train_obj = train(train_queue, valid_queue, model, architect, criterion, optimizer, lr)
+    else:
+      train_acc, train_obj = train_one_level(train_queue, model, criterion, optimizer, arch_optimizer)
     logging.info('train_acc %f', train_acc)
 
     # validation
@@ -163,6 +192,41 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr):
     loss.backward()
     nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
     optimizer.step()
+
+    prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
+    objs.update(loss.item(), n)
+    top1.update(prec1.item(), n)
+    top5.update(prec5.item(), n)
+
+    if step % args.report_freq == 0:
+      logging.info('train %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
+
+  return top1.avg, objs.avg
+
+def train_one_level(train_queue, model, criterion, optimizer, arch_optimizer):
+  objs = utils.AvgrageMeter()
+  top1 = utils.AvgrageMeter()
+  top5 = utils.AvgrageMeter()
+
+  for step, (input, target) in enumerate(train_queue):
+    model.train()
+    n = input.size(0)
+
+    #input = Variable(input, requires_grad=False).cuda()
+    #target = Variable(target, requires_grad=False).cuda(non_blocking=True)
+    input = input.cuda()
+    target = target.cuda(non_blocking=True)
+
+    optimizer.zero_grad()
+    arch_optimizer.zero_grad()
+    logits = model(input)
+    loss = criterion(logits, target)
+
+    loss.backward()
+    # clip for paramters
+    nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+    optimizer.step()
+    arch_optimizer.step()
 
     prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
     objs.update(loss.item(), n)
