@@ -114,6 +114,7 @@ class NetworkCIFAR(nn.Module):
     super(NetworkCIFAR, self).__init__()
     self._layers = layers
     self._auxiliary = auxiliary
+    self.drop_path_prob = -1
 
     stem_multiplier = 3
     C_curr = stem_multiplier*C
@@ -143,6 +144,21 @@ class NetworkCIFAR(nn.Module):
     self.global_pooling = nn.AdaptiveAvgPool2d(1)
     self.classifier = nn.Linear(C_prev, num_classes)
 
+  def forward(self, input, drop_path_prob=None):
+    if drop_path_prob is not None:
+      self.drop_path_prob = drop_path_prob
+      print("drop_path_prob: %.5f" % self.drop_path_prob)
+    logits_aux = None
+    s0 = s1 = self.stem(input)
+    for i, cell in enumerate(self.cells):
+      s0, s1 = s1, cell(s0, s1, self.drop_path_prob)
+      if i == 2*self._layers//3:
+        if self._auxiliary and self.training:
+          logits_aux = self.auxiliary_head(s1)
+    out = self.global_pooling(s1)
+    logits = self.classifier(out.view(out.size(0),-1))
+    return logits, logits_aux
+  '''  
   def forward(self, input):
     logits_aux = None
     s0 = s1 = self.stem(input)
@@ -154,7 +170,7 @@ class NetworkCIFAR(nn.Module):
     out = self.global_pooling(s1)
     logits = self.classifier(out.view(out.size(0),-1))
     return logits, logits_aux
-
+  '''
 
 class NetworkImageNet(nn.Module):
 

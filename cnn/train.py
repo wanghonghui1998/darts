@@ -24,7 +24,8 @@ parser.add_argument('--learning_rate', type=float, default=0.025, help='init lea
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=50, help='report frequency')
-parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
+#parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
+parser.add_argument('--gpu', type=str, default='0', help='gpu device id')
 parser.add_argument('--epochs', type=int, default=600, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=36, help='num of init channels')
 parser.add_argument('--layers', type=int, default=20, help='total number of layers')
@@ -52,6 +53,7 @@ logging.getLogger().addHandler(fh)
 
 CIFAR_CLASSES = 10
 
+os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
 def main():
   if not torch.cuda.is_available():
@@ -59,17 +61,19 @@ def main():
     sys.exit(1)
 
   np.random.seed(args.seed)
-  torch.cuda.set_device(args.gpu)
+  #torch.cuda.set_device(args.gpu)
   cudnn.benchmark = True
   torch.manual_seed(args.seed)
   cudnn.enabled=True
   torch.cuda.manual_seed(args.seed)
-  logging.info('gpu device = %d' % args.gpu)
+  logging.info('gpu device = %s' % args.gpu)
+  #logging.info('gpu device = %d' % args.gpu)
   logging.info("args = %s", args)
 
   genotype = eval("genotypes.%s" % args.arch)
   model = Network(args.init_channels, CIFAR_CLASSES, args.layers, args.auxiliary, genotype)
-  model = model.cuda()
+  #model = model.cuda()
+  model = torch.nn.DataParallel(model).cuda()
 
   logging.info("param size = %fMB", utils.count_parameters_in_MB(model))
 
@@ -87,28 +91,30 @@ def main():
   valid_data = dset.CIFAR10(root=args.data, train=False, download=True, transform=valid_transform)
 
   train_queue = torch.utils.data.DataLoader(
-      train_data, batch_size=args.batch_size, shuffle=True, pin_memory=True, num_workers=2)
+      train_data, batch_size=args.batch_size, shuffle=True, pin_memory=True, num_workers=4)
 
   valid_queue = torch.utils.data.DataLoader(
-      valid_data, batch_size=args.batch_size, shuffle=False, pin_memory=True, num_workers=2)
+      valid_data, batch_size=args.batch_size, shuffle=False, pin_memory=True, num_workers=4)
 
   scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, float(args.epochs))
 
   for epoch in range(args.epochs):
-    scheduler.step()
+    #scheduler.step()
     logging.info('epoch %d lr %e', epoch, scheduler.get_lr()[0])
-    model.drop_path_prob = args.drop_path_prob * epoch / args.epochs
+    #model.drop_path_prob = args.drop_path_prob * epoch / args.epochs
+    drop_path_prob = args.drop_path_prob * epoch / args.epochs
 
-    train_acc, train_obj = train(train_queue, model, criterion, optimizer)
+    train_acc, train_obj = train(train_queue, model, criterion, optimizer, drop_path_prob)
     logging.info('train_acc %f', train_acc)
 
     valid_acc, valid_obj = infer(valid_queue, model, criterion)
     logging.info('valid_acc %f', valid_acc)
+    scheduler.step()
 
     utils.save(model, os.path.join(args.save, 'weights.pt'))
 
 
-def train(train_queue, model, criterion, optimizer):
+def train(train_queue, model, criterion, optimizer, drop_path_prob=None):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
@@ -121,13 +127,14 @@ def train(train_queue, model, criterion, optimizer):
     target = target.cuda(non_blocking=True)
 
     optimizer.zero_grad()
-    logits, logits_aux = model(input)
+    logits, logits_aux = model(input, drop_path_prob)
+    drop_path_prob = None
     loss = criterion(logits, target)
     if args.auxiliary:
       loss_aux = criterion(logits_aux, target)
       loss += args.auxiliary_weight*loss_aux
     loss.backward()
-    nn.utils.clip_grad_norm(model.parameters(), args.grad_clip)
+    nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
     optimizer.step()
 
     prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
