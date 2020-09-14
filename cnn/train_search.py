@@ -106,7 +106,10 @@ def main():
           optimizer, float(args.epochs), eta_min=args.learning_rate_min)
 
     architect = Architect(model, args)
-
+    #for name, params in model.named_parameters():
+    #    print(name)
+    #    print(params.size())
+    #return 
   else:
     # TODO: autoaugment or cutout
     train_transform, valid_transform = utils._data_transforms_cifar10(args)
