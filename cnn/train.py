@@ -118,9 +118,14 @@ def train(train_queue, model, criterion, optimizer, drop_path_prob=None):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
+  data_time = utils.AvgrageMeter()
+  batch_time = utils.AvgrageMeter()
+
   model.train()
 
+  end = time.time() 
   for step, (input, target) in enumerate(train_queue):
+    data_time.update(time.time() - end)
     #input = Variable(input).cuda()
     #target = Variable(target).cuda(async=True)
     input = input.cuda()
@@ -143,8 +148,14 @@ def train(train_queue, model, criterion, optimizer, drop_path_prob=None):
     top1.update(prec1.item(), n)
     top5.update(prec5.item(), n)
 
+    batch_time.update(time.time() - end)
+    end = time.time() 
+
     if step % args.report_freq == 0:
-      logging.info('train %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
+      logging.info('train[%03d/%03d]\tloss:%e\ttop1:%f\ttop5:%f\tdata:%f\tbatch%f', step, len(train_queue), objs.avg, top1.avg, top5.avg, data_time.avg, batch_time.avg)
+
+    #if step % args.report_freq == 0:
+    #  logging.info('train %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
 
   return top1.avg, objs.avg
 

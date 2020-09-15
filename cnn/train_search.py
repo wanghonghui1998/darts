@@ -164,8 +164,13 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
+  data_time = utils.AvgrageMeter()
+  batch_time = utils.AvgrageMeter()
 
+  end = time.time() 
   for step, (input, target) in enumerate(train_queue):
+    data_time.update(time.time() - end)
+
     model.train()
     n = input.size(0)
 
@@ -200,9 +205,12 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr):
     objs.update(loss.item(), n)
     top1.update(prec1.item(), n)
     top5.update(prec5.item(), n)
+    
+    batch_time.update(time.time() - end)
+    end = time.time() 
 
     if step % args.report_freq == 0:
-      logging.info('train %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
+      logging.info('train[%03d/%03d]\tloss:%e\ttop1:%f\ttop5:%f\tdata:%f\tbatch%f', step, len(train_queue), objs.avg, top1.avg, top5.avg, data_time.avg, batch_time.avg)
 
   return top1.avg, objs.avg
 
@@ -210,8 +218,13 @@ def train_one_level(train_queue, model, criterion, optimizer, arch_optimizer):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
+  data_time = utils.AvgrageMeter()
+  batch_time = utils.AvgrageMeter() 
 
+  end = time.time()
   for step, (input, target) in enumerate(train_queue):
+    data_time.update(time.time() - end)
+
     model.train()
     n = input.size(0)
 
@@ -236,8 +249,11 @@ def train_one_level(train_queue, model, criterion, optimizer, arch_optimizer):
     top1.update(prec1.item(), n)
     top5.update(prec5.item(), n)
 
+    batch_time.update(time.time() - end)
+    end = time.time() 
+
     if step % args.report_freq == 0:
-      logging.info('train %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
+      logging.info('train[%03d/%03d]\tloss:%e\ttop1:%f\ttop5:%f\tdata:%f\tbatch%f', step, len(train_queue), objs.avg, top1.avg, top5.avg, data_time.avg, batch_time.avg)
 
   return top1.avg, objs.avg
 
