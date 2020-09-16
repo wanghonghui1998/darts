@@ -17,6 +17,7 @@ import torch.backends.cudnn as cudnn
 from model_search import Network
 from architect import Architect
 
+from torch.utils.tensorboard import SummaryWriter 
 
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--data', type=str, default='../data', help='location of the data corpus')
@@ -54,6 +55,7 @@ fh = logging.FileHandler(os.path.join(args.save, 'log.txt'))
 fh.setFormatter(logging.Formatter(log_format))
 logging.getLogger().addHandler(fh)
 
+writer = SummaryWriter(log_dir=args.save)
 
 CIFAR_CLASSES = 10
 
@@ -138,12 +140,19 @@ def main():
 #    scheduler.step()
     lr = scheduler.get_lr()[0]
     logging.info('epoch %d lr %e', epoch, lr)
+    writer.add_scalar('lr/w', lr, epoch)
 
     genotype = model.genotype()
     logging.info('genotype = %s', genotype)
 
-    print(F.softmax(model.alphas_normal, dim=-1))
-    print(F.softmax(model.alphas_reduce, dim=-1))
+    #print(F.softmax(model.alphas_normal, dim=-1))
+    #print(F.softmax(model.alphas_reduce, dim=-1))
+    alphas_normal = F.softmax(model.alphas_normal, dim=-1))
+    alphas_reduce = F.softmax(model.alphas_reduce, dim=-1))
+    print(alphas_normal)
+    print(alphas_reduce)
+    for op in alphas_normal.size(-1):
+      writer.add_scalar('arch/%d'%op, alphas_normal[0][i].item(), epoch)
 
     # training
     if not args.one_level:
@@ -151,10 +160,14 @@ def main():
     else:
       train_acc, train_obj = train_one_level(train_queue, model, criterion, optimizer, arch_optimizer)
     logging.info('train_acc %f', train_acc)
+    writer.add_scalars('acc', {'train', train_acc}, epoch)
+    writer.add_scalars('loss', {'train', train_obj}, epoch)
 
     # validation
     valid_acc, valid_obj = infer(valid_queue, model, criterion)
     logging.info('valid_acc %f', valid_acc)
+    writer.add_scalars('acc', {'valid', valid_acc}, epoch)
+    writer.add_scalars('loss', {'valid', valid_obj}, epoch)
 
     utils.save(model, os.path.join(args.save, 'weights.pt'))
     scheduler.step()
@@ -210,7 +223,7 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr):
     end = time.time() 
 
     if step % args.report_freq == 0:
-      logging.info('train[%03d/%03d]\tloss:%e\ttop1:%f\ttop5:%f\tdata:%f\tbatch%f', step, len(train_queue), objs.avg, top1.avg, top5.avg, data_time.avg, batch_time.avg)
+      logging.info('train[%03d/%03d]\tloss:%e\ttop1:%f\ttop5:%f\tdata:%f\tbatch:%f', step, len(train_queue), objs.avg, top1.avg, top5.avg, data_time.avg, batch_time.avg)
 
   return top1.avg, objs.avg
 
