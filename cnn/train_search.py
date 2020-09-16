@@ -266,7 +266,7 @@ def train_one_level(train_queue, model, criterion, optimizer, arch_optimizer):
     end = time.time() 
 
     if step % args.report_freq == 0:
-      logging.info('train[%03d/%03d]\tloss:%e\ttop1:%f\ttop5:%f\tdata:%f\tbatch%f', step, len(train_queue), objs.avg, top1.avg, top5.avg, data_time.avg, batch_time.avg)
+      logging.info('train[%03d/%03d]\tloss:%e\ttop1:%f\ttop5:%f\tdata:%f\tbatch:%f', step, len(train_queue), objs.avg, top1.avg, top5.avg, data_time.avg, batch_time.avg)
 
   return top1.avg, objs.avg
 
