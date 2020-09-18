@@ -27,7 +27,7 @@ parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight dec
 parser.add_argument('--report_freq', type=float, default=50, help='report frequency')
 #parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--gpu', type=str, default='0', help='gpu device id')
-parser.add_argument('--epochs', type=int, default=600, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=100, help='num of training epochs')
 parser.add_argument('--start_epoch', type=int, default=0, help='num of start training epoch')
 parser.add_argument('--init_channels', type=int, default=36, help='num of init channels')
 parser.add_argument('--layers', type=int, default=20, help='total number of layers')
@@ -43,9 +43,11 @@ parser.add_argument('--save', type=str, default='EXP', help='experiment name')
 parser.add_argument('--seed', type=int, default=0, help='random seed')
 parser.add_argument('--arch', type=str, default='DARTS', help='which architecture to use')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
+parser.add_argument('--train_portion', type=float, default=0.5, help='portion of training data')
+
 args = parser.parse_args()
 
-args.save = 'eval-{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
+args.save = 'select-{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
 utils.create_exp_dir(args.save, scripts_to_save=glob.glob('*.py'))
 
 log_format = '%(asctime)s %(message)s'
@@ -111,13 +113,20 @@ def main():
 
   train_transform, valid_transform = utils._data_transforms_cifar10(args)
   train_data = dset.CIFAR10(root=args.data, train=True, download=True, transform=train_transform)
-  valid_data = dset.CIFAR10(root=args.data, train=False, download=True, transform=valid_transform)
+  
+  num_train = len(train_data)
+  indices = list(range(num_train))
+  split = int(np.floor(args.train_portion * num_train))
 
   train_queue = torch.utils.data.DataLoader(
-      train_data, batch_size=args.batch_size, shuffle=True, pin_memory=True, num_workers=4)
+        train_data, batch_size=args.batch_size,
+        sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[:split]),
+        pin_memory=True, num_workers=2)
 
   valid_queue = torch.utils.data.DataLoader(
-      valid_data, batch_size=args.batch_size, shuffle=False, pin_memory=True, num_workers=4)
+        train_data, batch_size=args.batch_size,
+        sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[split:num_train]),
+        pin_memory=True, num_workers=2)
 
   scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, float(args.epochs))
 
