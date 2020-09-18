@@ -147,12 +147,12 @@ def main():
 
     #print(F.softmax(model.alphas_normal, dim=-1))
     #print(F.softmax(model.alphas_reduce, dim=-1))
-    alphas_normal = F.softmax(model.alphas_normal, dim=-1))
-    alphas_reduce = F.softmax(model.alphas_reduce, dim=-1))
+    alphas_normal = F.softmax(model.alphas_normal, dim=-1)
+    alphas_reduce = F.softmax(model.alphas_reduce, dim=-1)
     print(alphas_normal)
     print(alphas_reduce)
-    for op in alphas_normal.size(-1):
-      writer.add_scalar('arch/%d'%op, alphas_normal[0][i].item(), epoch)
+    for op in range(alphas_normal.size(-1)):
+      writer.add_scalar('arch/%d'%op, alphas_normal[0][op].item(), epoch)
 
     # training
     if not args.one_level:
@@ -160,14 +160,14 @@ def main():
     else:
       train_acc, train_obj = train_one_level(train_queue, model, criterion, optimizer, arch_optimizer)
     logging.info('train_acc %f', train_acc)
-    writer.add_scalars('acc', {'train', train_acc}, epoch)
-    writer.add_scalars('loss', {'train', train_obj}, epoch)
+    writer.add_scalars('acc', {'train': train_acc}, epoch)
+    writer.add_scalars('loss', {'train': train_obj}, epoch)
 
     # validation
     valid_acc, valid_obj = infer(valid_queue, model, criterion)
     logging.info('valid_acc %f', valid_acc)
-    writer.add_scalars('acc', {'valid', valid_acc}, epoch)
-    writer.add_scalars('loss', {'valid', valid_obj}, epoch)
+    writer.add_scalars('acc', {'valid': valid_acc}, epoch)
+    writer.add_scalars('loss', {'valid': valid_obj}, epoch)
 
     utils.save(model, os.path.join(args.save, 'weights.pt'))
     scheduler.step()
@@ -267,7 +267,7 @@ def train_one_level(train_queue, model, criterion, optimizer, arch_optimizer):
 
     if step % args.report_freq == 0:
       logging.info('train[%03d/%03d]\tloss:%e\ttop1:%f\ttop5:%f\tdata:%f\tbatch:%f', step, len(train_queue), objs.avg, top1.avg, top5.avg, data_time.avg, batch_time.avg)
-
+    
   return top1.avg, objs.avg
 
 
