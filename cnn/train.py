@@ -58,10 +58,10 @@ logging.getLogger().addHandler(fh)
 writer = SummaryWriter(log_dir=args.save)
 
 CIFAR_CLASSES = 10
-best_acc1 = 0
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
 def main():
+  best_acc1 = 0
   if not torch.cuda.is_available():
     logging.info('no gpu device available')
     sys.exit(1)
@@ -192,7 +192,7 @@ def train(train_queue, model, criterion, optimizer, drop_path_prob=None):
     end = time.time() 
 
     if step % args.report_freq == 0:
-      logging.info('train[%03d/%03d]\tloss:%e\ttop1:%f\ttop5:%f\tdata:%f\tbatch%f', step, len(train_queue), objs.avg, top1.avg, top5.avg, data_time.avg, batch_time.avg)
+      logging.info('train[%03d/%03d]\tloss:%e\ttop1:%f\ttop5:%f\tdata:%f\tbatch:%f', step, len(train_queue), objs.avg, top1.avg, top5.avg, data_time.avg, batch_time.avg)
 
     #if step % args.report_freq == 0:
     #  logging.info('train %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)

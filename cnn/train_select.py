@@ -60,7 +60,6 @@ logging.getLogger().addHandler(fh)
 writer = SummaryWriter(log_dir=args.save)
 
 CIFAR_CLASSES = 10
-best_acc1 = 0
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
 def main():
@@ -68,6 +67,7 @@ def main():
     logging.info('no gpu device available')
     sys.exit(1)
 
+  best_acc1 = 0
   np.random.seed(args.seed)
   #torch.cuda.set_device(args.gpu)
   cudnn.benchmark = True
