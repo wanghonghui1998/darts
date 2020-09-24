@@ -254,6 +254,7 @@ def train_one_level(train_queue, model, criterion, optimizer, arch_optimizer):
     loss.backward()
     # clip for paramters
     nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+    nn.utils.clip_grad_norm_(model.arch_parameters(), args.grad_clip)
     optimizer.step()
     arch_optimizer.step()
 
